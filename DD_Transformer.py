@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import math
+import numpy as np
 
 class DecoderLayer(nn.Module):
     # d_model stands for dimension of the word vector in a model
@@ -211,24 +212,39 @@ class Transformer(nn.Module):
         self.encoder = TransformerBlock(d_model, heads, forward_expansion, dropout)
         self.decoder = Decoder(vocab_size, d_model, n_layers, heads, forward_expansion, dropout)
 
-    # The forward function returns the next word id from vocab dictionary as a 1d tensor
-    def forward(self, src_input, trg_mask, trg_input=None, scr_mask=None):
+    # The forward function returns the original input from encoder and the next word id from vocab dictionary
+    # as a 2d tensor
+    def forward(self, src_input, trg_input, trg_mask, scr_mask=None):
         memory = self.encoder(src_input)
-        if trg_input == None:
-           trg_input == src_input[-1]
         log_probs = self.decoder(trg_input, memory, scr_mask, trg_mask)
-        probs = torch.exp(log_probs[:, -1, :])
-        next_word_id = probs.argmax(dim=-1)
-        return next_word_id
+        probs = torch.exp(log_probs[:, :, :])
+        next_ids = probs.argmax(dim=-1)
+        return next_ids
 
 
-d_model = 200
+# <editor-fold desc="sample code">
+d_model = 100
 heads = 2
 vocab_size = 10000
 forward_expansion = 1
 
 transformer = Transformer(d_model, heads, vocab_size, forward_expansion)
 trg_input = torch.tensor([[1,2,3]]).long()
-src_input = torch.randn(1,3,200)
+src_input = torch.randn(1,3,100)
 trg_mask = torch.tensor([[1, 1, 1]])
 print(transformer(src_input, trg_mask, trg_input))
+# </editor-fold>
+d_model = 100
+heads = 1
+vocab_size = 7620
+forward_expansion = 1
+
+transformer = Transformer(d_model, heads, vocab_size, forward_expansion)
+# We plug 3 because tensor cannot have negative number during embedding
+trg_input = torch.tensor(np.load('decoder_target.npy')[:-1, :] + 3).long()
+np_input = np.load('encoder_input.npy')
+src_input = torch.tensor(np_input, dtype=torch.float32).transpose(0, 2).transpose(1, 2)
+trg_mask = torch.tensor(np.ones(10), dtype=torch.float32)
+print(f'shape of trg_input is {trg_input.shape}')
+print(f'shape of src_input is {src_input.shape}')
+print(transformer(src_input, trg_input, trg_mask))

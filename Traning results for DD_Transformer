@@ -1,0 +1,60 @@
+Epoch 1, Loss: 6.944715543384969, Training Accuracy: 0.4303418314850806
+  0%|          | 0/274 [00:00<?, ?it/s]Validation Loss: 4.352232549501502, Validation Accuracy: 0.5053955189757658
+100%|██████████| 274/274 [00:47<00:00,  5.71it/s]
+Epoch 2, Loss: 3.801196716997745, Training Accuracy: 0.4973933920201212
+Validation Loss: 3.7584081248960635, Validation Accuracy: 0.5284865112025606
+100%|██████████| 274/274 [00:47<00:00,  5.74it/s]
+Epoch 3, Loss: 3.057159158435181, Training Accuracy: 0.522213330284669
+Validation Loss: 3.5761461223381152, Validation Accuracy: 0.5390489254686786
+100%|██████████| 274/274 [00:48<00:00,  5.66it/s]
+Epoch 4, Loss: 2.723357342455509, Training Accuracy: 0.5419458099919973
+  0%|          | 0/274 [00:00<?, ?it/s]Validation Loss: 3.4717088022093843, Validation Accuracy: 0.5469593049839964
+100%|██████████| 274/274 [00:47<00:00,  5.73it/s]
+Epoch 5, Loss: 2.538303058077819, Training Accuracy: 0.5516176974962844
+Validation Loss: 3.4141481130019478, Validation Accuracy: 0.5500685871056241
+100%|██████████| 274/274 [00:48<00:00,  5.67it/s]
+Epoch 6, Loss: 2.413729411407109, Training Accuracy: 0.5608780153195382
+  0%|          | 0/274 [00:00<?, ?it/s]Validation Loss: 3.387614260549131, Validation Accuracy: 0.5531321444901692
+100%|██████████| 274/274 [00:29<00:00,  9.19it/s]
+Epoch 7, Loss: 2.319238281162986, Training Accuracy: 0.569749628444038
+Validation Loss: 3.3551208247309146, Validation Accuracy: 0.5607681755829904
+100%|██████████| 274/274 [00:20<00:00, 13.26it/s]
+Epoch 8, Loss: 2.241074783958658, Training Accuracy: 0.575694523836744
+  0%|          | 0/274 [00:00<?, ?it/s]Validation Loss: 3.334576824437017, Validation Accuracy: 0.5645176040237768
+100%|██████████| 274/274 [00:21<00:00, 12.69it/s]
+Epoch 9, Loss: 2.171760201889233, Training Accuracy: 0.5800731679432949
+Validation Loss: 3.3413142155909883, Validation Accuracy: 0.5660722450845908
+100%|██████████| 274/274 [00:21<00:00, 12.88it/s]
+Epoch 10, Loss: 2.116435486904896, Training Accuracy: 0.5846461643992226
+Validation Loss: 3.3251521138177402, Validation Accuracy: 0.5683584819387288
+
+With parameters:
+# Splitting the data
+enc_inp_train, enc_inp_val, dec_inp_train, dec_inp_val, out_tar_train, out_tar_val = train_test_split(
+    src_input, trg_input, target, test_size=0.2, random_state=42)
+# Define batch size
+batch_size = 32
+
+# Create training and validation datasets
+train_dataset = TransformerDataset(enc_inp_train, dec_inp_train, out_tar_train)
+val_dataset = TransformerDataset(enc_inp_val, dec_inp_val, out_tar_val)
+
+# Create DataLoaders
+train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+
+# Initialize model, optimizer, and loss function
+d_model = 100
+heads = 5
+vocab_size = 7620
+forward_expansion = 4
+
+model = Transformer(d_model, heads, vocab_size, forward_expansion)  # Your model instantiation here
+seq_length = 10  # Assuming your decoder input sequence length is 10
+trg_mask = create_mask(seq_length)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+criterion = nn.CrossEntropyLoss()
+
+# Splitting and DataLoader setup should be done as shown previously
+num_epochs = 10
+

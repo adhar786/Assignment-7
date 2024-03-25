@@ -1,13 +1,12 @@
 # Importing Modules
-import requests
-import re
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 import math
-import random
+from sklearn.model_selection import train_test_split
 
 
 # MLM Encoder
@@ -299,11 +298,137 @@ model.eval()
 #
 # # Test decoder:
 # d = Decoder(7000, 100, 1, 1, 4, 0.1)
-test_input = torch.ones(1, 100).long()
+# test_input = torch.ones(1, 100).long()
 # print(f'the shape of target input is {test_input.shape}')
 # print(d.forward(test_input, test_memory, None, None))
 
 # Test Transformer
-m = TransformerApp2(model, 512, 100, 1, 7000, 4)
-mask = None
-print(m(test_input, test_input, mask))
+# m = TransformerApp2(model, 512, 100, 1, 7000, 4)
+# mask = None
+# print(m(test_input, test_input, mask))
+
+
+class TransformerDataset2(Dataset):
+    def __init__(self, encoder_input, decoder_input, output_target):
+        self.encoder_input = encoder_input
+        self.decoder_input = decoder_input
+        self.output_target = output_target
+
+    def __len__(self):
+        return len(self.encoder_input)
+
+    def __getitem__(self, idx):
+        return {
+            'encoder_input': self.encoder_input[idx],
+            'decoder_input': self.decoder_input[idx],
+            'output_target': self.output_target[idx]
+        }
+
+
+def create_mask(size):
+    """
+    Creates a mask for masked multi-head attention for the decoder.
+
+    Parameters:
+    - size (int): The size of the sequence (sequence length).
+
+    Returns:
+    - torch.Tensor: A square matrix of shape (size, size) where each entry [i, j]
+      is 0 if j <= i and float('-inf') otherwise. This ensures positions can only
+      attend to earlier positions in the sequence, implementing the autoregressive
+      property.
+    """
+    reversed_mask = torch.triu(torch.ones(size, size), diagonal=1).to(torch.bool)
+    mask = ~reversed_mask
+    return mask
+
+
+trg_input = torch.tensor(np.load('decoder_input.npy')[:, :] + 3).long()
+decoder_target = np.load('decoder_target.npy')[:, :] + 3
+target = torch.tensor(decoder_target, dtype=torch.long)
+
+# In this case, the source input is the same as the target input
+src_input = torch.tensor(np.load('decoder_input.npy')[:, 1:] + 3).long()
+enc_inp_train, enc_inp_val, dec_inp_train, dec_inp_val, out_tar_train, out_tar_val = train_test_split(
+    src_input, trg_input, target, test_size=0.2, random_state=42)
+# Define batch size
+batch_size = 32
+
+# Create training and validation datasets
+train_dataset = TransformerDataset2(enc_inp_train, dec_inp_train, out_tar_train)
+val_dataset = TransformerDataset2(enc_inp_val, dec_inp_val, out_tar_val)
+
+# Create DataLoaders
+train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+
+# Initialize Transformer2
+encoder = model
+for param in encoder.parameters():
+    param.requires_grad = False  # Freeze all parameters in the encoder
+
+enc_dim = 512
+dec_dim = 100
+heads = 1
+vocab_size = 7620
+forward_expansion = 4
+
+t2 = TransformerApp2(model, enc_dim, dec_dim, heads, vocab_size, forward_expansion)
+seq_length = 10
+trg_mask = create_mask(seq_length)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+criterion = nn.CrossEntropyLoss()
+
+# Splitting and DataLoader setup should be done as shown previously
+num_epochs = 1
+
+for epoch in range(num_epochs):
+    t2.train()
+    total_loss = 0
+    correct_predictions = 0
+    total_predictions = 0
+
+    for batch in tqdm(train_loader):
+        encoder_inp = batch['encoder_input']
+        decoder_inp = batch['decoder_input']
+        targets = batch['output_target']
+
+        optimizer.zero_grad()
+
+        log_probs = t2(encoder_inp, decoder_inp, trg_mask=trg_mask)  # Add appropriate masks as needed
+        loss = criterion(log_probs.view(-1, 7620), targets.view(-1))
+        loss.backward()
+        optimizer.step()
+
+        total_loss += loss.item()
+
+        # Compute accuracy
+        _, predicted = torch.max(log_probs, -1)  # Get the index of the max log-probability
+        correct_predictions += (predicted.view(-1) == targets.view(-1)).sum().item()
+        total_predictions += targets.numel()
+
+    train_accuracy = correct_predictions / total_predictions
+    print(f"Epoch {epoch + 1}, Loss: {total_loss / len(train_loader)}, Training Accuracy: {train_accuracy}")
+
+    # Evaluation phase
+    t2.eval()
+    total_val_loss = 0
+    correct_val_predictions = 0
+    total_val_predictions = 0
+    with torch.no_grad():
+        for batch in val_loader:
+            encoder_inp = batch['encoder_input']
+            decoder_inp = batch['decoder_input']
+            targets = batch['output_target']
+
+            log_probs = t2(encoder_inp, decoder_inp, trg_mask=trg_mask) # Add appropriate masks as needed for evaluation
+            loss = criterion(log_probs.view(-1, 7620), targets.view(-1))
+            total_val_loss += loss.item()
+
+            # Compute validation accuracy
+            _, predicted_val = torch.max(log_probs, -1)
+            correct_val_predictions += (predicted_val.view(-1) == targets.view(-1)).sum().item()
+            total_val_predictions += targets.numel()
+
+    val_accuracy = correct_val_predictions / total_val_predictions
+    print(f"Validation Loss: {total_val_loss / len(val_loader)}, Validation Accuracy: {val_accuracy}")
